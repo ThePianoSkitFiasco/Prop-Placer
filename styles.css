@@ -1,0 +1,291 @@
+* {
+  box-sizing: border-box;
+}
+
+:root {
+  --bg: #171717;
+  --panel: #232323;
+  --panel-2: #1b1b1b;
+  --line: #353535;
+  --text: #efefef;
+  --muted: #b8b8b8;
+  --accent: #79c7ff;
+  --accent-soft: rgba(121, 199, 255, 0.2);
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Arial, sans-serif;
+}
+
+body {
+  min-height: 100vh;
+}
+
+.app {
+  display: grid;
+  grid-template-columns: 360px 1fr;
+  min-height: 100vh;
+}
+
+.app.mobile-mode {
+  grid-template-columns: 1fr;
+}
+
+.sidebar {
+  padding: 16px;
+  border-right: 1px solid var(--line);
+  background: #202020;
+  overflow-y: auto;
+}
+
+.app.mobile-mode .sidebar {
+  border-right: none;
+  border-bottom: 1px solid var(--line);
+}
+
+.editor {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 16px;
+  overflow: auto;
+}
+
+.canvas-wrap {
+  border: 1px solid var(--line);
+  background: #101010;
+  padding: 12px;
+  max-width: 100%;
+}
+
+canvas {
+  display: block;
+  background: #000;
+  image-rendering: pixelated;
+  max-width: 100%;
+  height: auto;
+  cursor: crosshair;
+}
+
+h1 {
+  margin: 0 0 10px;
+  font-size: 26px;
+}
+
+h2 {
+  margin: 0 0 10px;
+  font-size: 16px;
+}
+
+.intro-text {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.4;
+  margin: 0 0 14px;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  padding: 12px;
+  margin-bottom: 14px;
+}
+
+.panel-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+label {
+  display: block;
+  margin-bottom: 10px;
+}
+
+label span {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 14px;
+}
+
+input[type="number"],
+input[type="text"],
+input[type="file"],
+select,
+textarea {
+  width: 100%;
+  background: #2a2a2a;
+  color: var(--text);
+  border: 1px solid #444;
+  padding: 8px;
+  font-size: 14px;
+}
+
+textarea {
+  resize: vertical;
+}
+
+button {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #444;
+  background: #3a3a3a;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 14px;
+}
+
+button:hover {
+  background: #4a4a4a;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.helper-text {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.preview-box {
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+}
+
+.preview-title {
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+#assetPreviewCanvas {
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--line);
+  background: #0d0d0d;
+}
+
+.asset-list,
+.placed-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.asset-card,
+.placed-card {
+  border: 1px solid var(--line);
+  background: #1d1d1d;
+  padding: 10px;
+}
+
+.asset-card.selected,
+.placed-card.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent-soft) inset;
+}
+
+.asset-card-title,
+.placed-title {
+  font-weight: bold;
+  font-size: 14px;
+  margin-bottom: 6px;
+}
+
+.asset-card-meta,
+.placed-meta {
+  color: #c9c9c9;
+  font-size: 12px;
+  line-height: 1.4;
+  margin-bottom: 8px;
+}
+
+.asset-card-actions,
+.placed-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.asset-card-actions button,
+.placed-actions button {
+  flex: 1;
+  width: auto;
+  padding: 8px;
+  font-size: 13px;
+}
+
+.tool-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.tool-grid.single {
+  grid-template-columns: 1fr;
+}
+
+.toggle-inline {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  margin: 0;
+}
+
+.toggle-inline input {
+  width: auto;
+  margin: 0;
+}
+
+.edit-divider {
+  height: 1px;
+  background: var(--line);
+  margin: 14px 0;
+}
+
+.behaviour-box {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+}
+
+#exportPreviewText {
+  width: 100%;
+  min-height: 220px;
+  resize: vertical;
+  padding: 10px;
+  background: #101010;
+  color: #eaeaea;
+  border: 1px solid var(--line);
+  font-family: monospace;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.debug-line {
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+@media (max-width: 920px) {
+  .app {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+  }
+}[PASTE YOUR FULL STYLES.CSS HERE]

@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Prop Placer</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app" id="appRoot">
+    <aside class="sidebar">
+      <h1>Prop Placer</h1>
+      <p class="intro-text">
+        Build animated scene props the easy way. Upload a picture, place it on the stage, preview it, then export it for your game.
+      </p>
+
+      <section class="panel">
+        <div class="panel-header-row">
+          <h2>View</h2>
+          <label class="toggle-inline">
+            <input type="checkbox" id="mobileModeToggle" />
+            <span>Mobile mode</span>
+          </label>
+        </div>
+        <div class="helper-text">
+          Mobile mode makes the layout stack vertically for smaller screens.
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Background</h2>
+        <label>
+          <span>Upload your background</span>
+          <input type="file" id="backgroundUpload" accept="image/png,image/*" />
+        </label>
+        <div class="helper-text">
+          This is only a visual guide. It helps you place things in the right spot.
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>World Size</h2>
+        <label>
+          <span>World width</span>
+          <input type="number" id="worldWidthInput" min="1" step="1" />
+        </label>
+        <label>
+          <span>World height</span>
+          <input type="number" id="worldHeightInput" min="1" step="1" />
+        </label>
+        <div class="helper-text">
+          These numbers should match your game world, not the screen size.
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Add Your Pictures</h2>
+        <label>
+          <span>Upload your picture</span>
+          <input type="file" id="propImageUpload" accept="image/png,image/*" />
+        </label>
+
+        <div class="helper-text">
+          Use one long image with the animation frames in a row.
+        </div>
+
+        <label>
+          <span>Name this picture</span>
+          <input type="text" id="propNameInput" placeholder="Neon Sign" />
+        </label>
+
+        <label>
+          <span>Width of one image</span>
+          <input type="number" id="frameWidthInput" min="1" step="1" value="64" />
+        </label>
+
+        <label>
+          <span>Height of one image</span>
+          <input type="number" id="frameHeightInput" min="1" step="1" value="64" />
+        </label>
+
+        <label>
+          <span>How many images does it have?</span>
+          <input type="number" id="frameCountInput" min="1" step="1" value="1" />
+        </label>
+
+        <button type="button" id="savePropAssetButton">Save this picture</button>
+
+        <div class="helper-text" id="uploadStatusText">
+          No picture uploaded yet. Upload one to get started.
+        </div>
+
+        <div class="preview-box">
+          <div class="preview-title">Picture preview</div>
+          <canvas id="assetPreviewCanvas" width="260" height="100"></canvas>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Your Saved Pictures</h2>
+        <div class="helper-text">
+          Choose one, then click the stage to place it.
+        </div>
+        <div id="assetList" class="asset-list"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Edit Selected Thing</h2>
+
+        <div class="helper-text" id="selectedPropStatus">
+          No thing selected yet. Click something on the stage or in the list.
+        </div>
+
+        <label>
+          <span>Name this thing (optional)</span>
+          <input type="text" id="selectedPropNameInput" placeholder="Left TV" />
+        </label>
+
+        <label>
+          <span>Move by</span>
+          <select id="moveAmountSelect">
+            <option value="1">Tiny</option>
+            <option value="4">Small</option>
+            <option value="8" selected>Medium</option>
+            <option value="16">Big</option>
+          </select>
+        </label>
+
+        <div class="tool-grid">
+          <button type="button" id="moveUpButton">Move up</button>
+          <button type="button" id="moveLeftButton">Move left</button>
+          <button type="button" id="moveRightButton">Move right</button>
+          <button type="button" id="moveDownButton">Move down</button>
+        </div>
+
+        <div class="tool-grid">
+          <button type="button" id="makeBiggerButton">Make bigger</button>
+          <button type="button" id="makeSmallerButton">Make smaller</button>
+        </div>
+
+        <div class="tool-grid">
+          <button type="button" id="flipPropButton">Flip it</button>
+          <button type="button" id="copyPropButton">Copy this thing</button>
+        </div>
+
+        <div class="tool-grid">
+          <button type="button" id="deletePropButton">Delete this thing</button>
+        </div>
+
+        <div class="edit-divider"></div>
+
+        <label>
+          <span>How should this move?</span>
+          <select id="propBehaviourSelect">
+            <option value="static">Doesn't move</option>
+            <option value="loop">Loops</option>
+            <option value="beat">Moves to the beat</option>
+            <option value="randomFlicker">Random flicker</option>
+          </select>
+        </label>
+
+        <div class="helper-text">
+          Choose how this thing should move in the preview and in your game data.
+        </div>
+
+        <div id="loopSettings" class="behaviour-box">
+          <label>
+            <span>Speed</span>
+            <select id="loopSpeedSelect">
+              <option value="3">Slow</option>
+              <option value="6" selected>Medium</option>
+              <option value="10">Fast</option>
+              <option value="14">Very fast</option>
+            </select>
+          </label>
+        </div>
+
+        <div id="beatSettings" class="behaviour-box" hidden>
+          <label>
+            <span>Move every</span>
+            <select id="beatDivSelect">
+              <option value="1">Every beat</option>
+              <option value="2">Every 2 beats</option>
+              <option value="4">Every 4 beats</option>
+            </select>
+          </label>
+        </div>
+
+        <div id="flickerSettings" class="behaviour-box" hidden>
+          <label>
+            <span>Fastest blink (milliseconds)</span>
+            <input type="number" id="flickerMinInput" min="10" step="10" value="120" />
+          </label>
+
+          <label>
+            <span>Slowest blink (milliseconds)</span>
+            <input type="number" id="flickerMaxInput" min="10" step="10" value="300" />
+          </label>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Things on Screen</h2>
+        <div class="helper-text">
+          If the stage gets busy, use this list to grab the right thing quickly.
+        </div>
+        <div id="placedPropList" class="placed-list"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Grid</h2>
+
+        <label class="toggle-inline">
+          <input type="checkbox" id="snapToggle" />
+          <span>Snap to grid</span>
+        </label>
+
+        <label>
+          <span>Grid size</span>
+          <select id="gridSizeSelect">
+            <option value="4">4</option>
+            <option value="8" selected>8</option>
+            <option value="16">16</option>
+          </select>
+        </label>
+
+        <div class="helper-text">
+          When snap is on, placing, moving, and copying will line up cleanly.
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Preview</h2>
+
+        <div class="tool-grid">
+          <button type="button" id="playPreviewButton">Play preview</button>
+          <button type="button" id="pausePreviewButton">Pause preview</button>
+        </div>
+
+        <div class="tool-grid single">
+          <button type="button" id="resetPreviewButton">Start again</button>
+        </div>
+
+        <label>
+          <span>Speed of beat</span>
+          <input type="number" id="previewBpmInput" min="30" max="300" step="1" value="120" />
+        </label>
+
+        <div class="helper-text" id="previewStatusText">
+          Preview is paused.
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Export</h2>
+        <div class="helper-text">
+          Download JSON or copy game-ready code.
+        </div>
+
+        <div class="tool-grid">
+          <button type="button" id="downloadExportButton">Download for game</button>
+          <button type="button" id="copyExportButton">Copy game code</button>
+        </div>
+
+        <div class="helper-text" id="exportStatusText">
+          Nothing exported yet.
+        </div>
+
+        <div class="preview-box">
+          <div class="preview-title">What will be saved</div>
+          <textarea id="exportPreviewText" readonly rows="14"></textarea>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Debug</h2>
+        <div class="debug-line">Canvas: <span id="canvasSizeReadout">-</span></div>
+        <div class="debug-line">World: <span id="worldSizeReadout">-</span></div>
+        <div class="debug-line">Cursor (world): <span id="cursorWorldReadout">-</span></div>
+        <div class="debug-line">Last click (world): <span id="lastClickReadout">-</span></div>
+      </section>
+    </aside>
+
+    <main class="editor">
+      <div class="canvas-wrap">
+        <canvas id="editorCanvas" width="1200" height="720"></canvas>
+      </div>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>[PASTE YOUR FULL INDEX.HTML HERE]
