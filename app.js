@@ -28,6 +28,8 @@ const DEFAULTS = {
   }
 };
 
+const STORAGE_KEY = 'prop_placer_save_data';
+
 let assetCounter = 1;
 let propCounter = 1;
 
@@ -261,11 +263,125 @@ const ctx = dom.editorCanvas.getContext('2d');
 const assetPreviewCtx = dom.assetPreviewCanvas.getContext('2d');
 
 // ------------------------------------------------------------
+// Local storage
+// ------------------------------------------------------------
+function getNextNumberedId(ids, prefix) {
+  const pattern = new RegExp(`^${prefix}_(\\d+)$`);
+  let highest = 0;
+
+  ids.forEach((id) => {
+    const match = String(id).match(pattern);
+    if (!match) return;
+    highest = Math.max(highest, Number(match[1]) || 0);
+  });
+
+  return highest + 1;
+}
+
+function saveToLocalStorage() {
+  const dataToSave = {
+    version: 1,
+    background: state.background,
+    world: state.world,
+    assets: state.assets,
+    props: state.props,
+    grid: state.grid,
+    mobileMode: state.mobileMode,
+    selection: state.selection,
+    preview: {
+      bpm: previewState.bpm
+    },
+    counters: {
+      assetCounter,
+      propCounter
+    }
+  };
+
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
+  } catch (error) {
+    console.error('Failed to save state', error);
+  }
+}
+
+function restoreBackgroundImageFromState() {
+  uiState.backgroundImage = null;
+
+  if (!state.background.imageSrc) return;
+
+  const image = new Image();
+  image.onload = () => {
+    uiState.backgroundImage = image;
+    fitCanvasToBackground();
+    renderEditor();
+  };
+  image.src = state.background.imageSrc;
+}
+
+function loadFromLocalStorage() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (!saved) return false;
+
+    const data = JSON.parse(saved);
+
+    Object.assign(state.background, data.background || {});
+    Object.assign(state.world, data.world || {});
+
+    if (data.assets?.byId) {
+      state.assets = {
+        byId: data.assets.byId
+      };
+    }
+
+    if (data.props?.byId && Array.isArray(data.props.order)) {
+      state.props = {
+        byId: data.props.byId,
+        order: data.props.order
+      };
+    }
+
+    Object.assign(state.grid, data.grid || {});
+    Object.assign(state.selection, data.selection || {});
+    state.mobileMode = Boolean(data.mobileMode);
+
+    if (data.preview?.bpm) {
+      previewState.bpm = clamp(Number(data.preview.bpm) || DEFAULTS.preview.bpm, 30, 300);
+    }
+
+    assetCounter = Math.max(
+      Number(data.counters?.assetCounter) || 1,
+      getNextNumberedId(Object.keys(state.assets.byId), 'asset')
+    );
+    propCounter = Math.max(
+      Number(data.counters?.propCounter) || 1,
+      getNextNumberedId(Object.keys(state.props.byId), 'prop')
+    );
+
+    if (state.selection.assetId && !getAsset(state.selection.assetId)) {
+      state.selection.assetId = null;
+    }
+
+    if (state.selection.propId && !getProp(state.selection.propId)) {
+      state.selection.propId = null;
+    }
+
+    restoreBackgroundImageFromState();
+    ensurePreviewStatesMatchProps();
+    return true;
+  } catch (error) {
+    console.error('Failed to load saved state', error);
+    return false;
+  }
+}
+
+// ------------------------------------------------------------
 // Asset helpers
 // ------------------------------------------------------------
 function addAsset(assetData) {
   const asset = createAsset(assetData);
   state.assets.byId[asset.id] = asset;
+  saveToLocalStorage();
   return asset;
 }
 
@@ -273,6 +389,7 @@ function updateAsset(assetId, patch) {
   const existing = state.assets.byId[assetId];
   if (!existing) return null;
   state.assets.byId[assetId] = { ...existing, ...patch };
+  saveToLocalStorage();
   return state.assets.byId[assetId];
 }
 
@@ -306,6 +423,7 @@ function removeAsset(assetId) {
     state.selection.assetId = null;
   }
 
+  saveToLocalStorage();
   return true;
 }
 
@@ -317,6 +435,7 @@ function addProp(propData) {
   state.props.byId[prop.id] = prop;
   state.props.order.push(prop.id);
   ensurePreviewStatesMatchProps();
+  saveToLocalStorage();
   return prop;
 }
 
@@ -325,6 +444,7 @@ function updateProp(propId, patch) {
   if (!existing) return null;
   state.props.byId[propId] = { ...existing, ...patch };
   ensurePreviewStatesMatchProps();
+  saveToLocalStorage();
   return state.props.byId[propId];
 }
 
@@ -336,6 +456,7 @@ function removeProp(propId) {
   if (state.selection.propId === propId) {
     state.selection.propId = null;
   }
+  saveToLocalStorage();
   return true;
 }
 
@@ -355,6 +476,7 @@ function duplicateProp(propId) {
   state.props.byId[copy.id] = copy;
   state.props.order.push(copy.id);
   ensurePreviewStatesMatchProps();
+  saveToLocalStorage();
   return copy;
 }
 
@@ -371,15 +493,18 @@ function getAllProps() {
 // ------------------------------------------------------------
 function selectAsset(assetId) {
   state.selection.assetId = getAsset(assetId) ? assetId : null;
+  saveToLocalStorage();
 }
 
 function selectProp(propId) {
   state.selection.propId = getProp(propId) ? propId : null;
+  saveToLocalStorage();
 }
 
 function clearSelection() {
   state.selection.assetId = null;
   state.selection.propId = null;
+  saveToLocalStorage();
 }
 
 // ------------------------------------------------------------
@@ -392,11 +517,13 @@ function setBackground({
   naturalHeight = 0
 } = {}) {
   state.background = { imageSrc, fileName, naturalWidth, naturalHeight };
+  saveToLocalStorage();
 }
 
 function setWorldSize(width, height) {
   state.world.width = Number(width) || DEFAULTS.worldWidth;
   state.world.height = Number(height) || DEFAULTS.worldHeight;
+  saveToLocalStorage();
 }
 
 // ------------------------------------------------------------
@@ -450,6 +577,7 @@ function resetPreviewState() {
 
 function setPreviewBpm(value) {
   previewState.bpm = clamp(Number(value) || 120, 30, 300);
+  saveToLocalStorage();
   updatePreviewUi();
 }
 
@@ -1654,9 +1782,13 @@ function handleKeyboardShortcuts(event) {
 // Event binding
 // ------------------------------------------------------------
 function bindUi() {
+  dom.mobileModeToggle.checked = state.mobileMode;
+  dom.appRoot.classList.toggle('mobile-mode', state.mobileMode);
+
   dom.mobileModeToggle.addEventListener('change', () => {
     state.mobileMode = dom.mobileModeToggle.checked;
     dom.appRoot.classList.toggle('mobile-mode', state.mobileMode);
+    saveToLocalStorage();
   });
 
   dom.worldWidthInput.value = state.world.width;
@@ -1725,11 +1857,13 @@ function bindUi() {
 
   dom.snapToggle.addEventListener('change', () => {
     state.grid.enabled = dom.snapToggle.checked;
+    saveToLocalStorage();
     refreshAllUi();
   });
 
   dom.gridSizeSelect.addEventListener('change', () => {
     state.grid.size = Math.max(1, Number(dom.gridSizeSelect.value) || 8);
+    saveToLocalStorage();
     refreshAllUi();
   });
 
@@ -1754,6 +1888,7 @@ function bindUi() {
 // Init
 // ------------------------------------------------------------
 function init() {
+  loadFromLocalStorage();
   fitCanvasToBackground();
   bindUi();
   renderAssetPreview();
