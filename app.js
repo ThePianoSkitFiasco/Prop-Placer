@@ -1767,4 +1767,4 @@ function init() {
   console.log('Prop Placer loaded');
 }
 
-init();[PASTE YOUR FULL APP.JS HERE]
+init();
