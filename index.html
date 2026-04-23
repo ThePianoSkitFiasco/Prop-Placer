@@ -27,7 +27,7 @@
         </div>
       </section>
 
-      <section class="panel">
+      <section class="panel drop-target" id="backgroundDropArea">
         <h2>Background</h2>
         <label>
           <span>Upload your background</span>
@@ -53,7 +53,7 @@
         </div>
       </section>
 
-      <section class="panel">
+      <section class="panel drop-target" id="propImageDropArea">
         <h2>Add Your Pictures</h2>
         <label>
           <span>Upload your picture</span>
@@ -282,12 +282,15 @@
     </aside>
 
     <main class="editor">
+      <div class="view-tools">
+        <button type="button" id="resetViewButton">Reset view</button>
+      </div>
       <div class="canvas-wrap">
         <canvas id="editorCanvas" width="1200" height="720"></canvas>
       </div>
     </main>
   </div>
 
-  <script src="app.js"></script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>

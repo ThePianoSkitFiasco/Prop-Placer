@@ -3,69 +3,30 @@
 // Beginner-friendly scene prop placement tool
 // ============================================================
 
-const DEFAULTS = {
-  worldWidth: 2000,
-  worldHeight: 720,
-  prop: {
-    scale: 1,
-    depth: 50,
-    originX: 0.5,
-    originY: 1,
-    flipX: false,
-    mode: 'static',
-    beatDiv: 1,
-    fps: 6,
-    minDelay: 120,
-    maxDelay: 300,
-    label: ''
-  },
-  preview: {
-    bpm: 120
-  },
-  grid: {
-    enabled: false,
-    size: 8
-  }
-};
-
-const STORAGE_KEY = 'prop_placer_save_data';
-
-let assetCounter = 1;
-let propCounter = 1;
-
-function makeAssetId(base = 'asset') {
-  const id = `${base}_${String(assetCounter).padStart(3, '0')}`;
-  assetCounter += 1;
-  return id;
-}
-
-function makePropId() {
-  const id = `prop_${String(propCounter).padStart(3, '0')}`;
-  propCounter += 1;
-  return id;
-}
-
-function clamp(value, min, max) {
-  return Math.max(min, Math.min(max, value));
-}
-
-function randomBetween(min, max) {
-  const safeMin = Math.min(min, max);
-  const safeMax = Math.max(min, max);
-  return Math.floor(Math.random() * (safeMax - safeMin + 1)) + safeMin;
-}
-
-function isTypingTarget(target) {
-  if (!target) return false;
-  const tag = target.tagName?.toLowerCase();
-  return tag === 'input' || tag === 'textarea' || tag === 'select';
-}
-
-function timestampString() {
-  const d = new Date();
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
-}
+import { dom, ctx, assetPreviewCtx } from './dom.js';
+import { exportAsJson as buildExportJson, exportAsJsModule as buildExportJsModule } from './export-helpers.js';
+import {
+  DEFAULTS,
+  HISTORY_LIMIT,
+  STORAGE_KEY,
+  assetImageCache,
+  assetUploadDraft,
+  counters,
+  createAsset,
+  createPlacedProp,
+  editHistory,
+  previewState,
+  state,
+  uiState
+} from './state.js';
+import {
+  clamp,
+  fileToDataUrl,
+  isTypingTarget,
+  randomBetween,
+  revokeObjectUrl,
+  timestampString
+} from './utils.js';
 
 function snapValue(value) {
   if (!state.grid.enabled) return value;
@@ -80,222 +41,12 @@ function snapPoint(x, y) {
   };
 }
 
-function createAsset({
-  id,
-  name = '',
-  imageSrc = '',
-  fileName = '',
-  frameWidth = 64,
-  frameHeight = 64,
-  frameCount = 1
-} = {}) {
-  return {
-    id: id || makeAssetId(),
-    name: name || 'New Picture',
-    imageSrc,
-    fileName,
-    frameWidth,
-    frameHeight,
-    frameCount
-  };
-}
-
-function createPlacedProp({
-  id,
-  assetId,
-  x = 0,
-  y = 0,
-  scale = DEFAULTS.prop.scale,
-  depth = DEFAULTS.prop.depth,
-  originX = DEFAULTS.prop.originX,
-  originY = DEFAULTS.prop.originY,
-  flipX = DEFAULTS.prop.flipX,
-  mode = DEFAULTS.prop.mode,
-  beatDiv = DEFAULTS.prop.beatDiv,
-  fps = DEFAULTS.prop.fps,
-  minDelay = DEFAULTS.prop.minDelay,
-  maxDelay = DEFAULTS.prop.maxDelay,
-  label = DEFAULTS.prop.label
-} = {}) {
-  if (!assetId) {
-    throw new Error('assetId is required');
-  }
-
-  return {
-    id: id || makePropId(),
-    assetId,
-    x,
-    y,
-    scale,
-    depth,
-    originX,
-    originY,
-    flipX,
-    mode,
-    beatDiv,
-    fps,
-    minDelay,
-    maxDelay,
-    label
-  };
-}
-
-const state = {
-  background: {
-    imageSrc: '',
-    fileName: '',
-    naturalWidth: 0,
-    naturalHeight: 0
-  },
-  world: {
-    width: DEFAULTS.worldWidth,
-    height: DEFAULTS.worldHeight
-  },
-  assets: {
-    byId: {}
-  },
-  props: {
-    byId: {},
-    order: []
-  },
-  selection: {
-    assetId: null,
-    propId: null
-  },
-  grid: {
-    enabled: DEFAULTS.grid.enabled,
-    size: DEFAULTS.grid.size
-  },
-  mobileMode: false
-};
-
-const uiState = {
-  backgroundImage: null,
-  pendingBackgroundUrl: '',
-  cursorWorldX: null,
-  cursorWorldY: null,
-  lastClickWorldX: null,
-  lastClickWorldY: null
-};
-
-const previewState = {
-  playing: false,
-  bpm: DEFAULTS.preview.bpm,
-  animationFrameId: null,
-  lastTickTime: 0,
-  beatAccumulatorMs: 0,
-  beatCount: 0,
-  props: {}
-};
-
-const assetUploadDraft = {
-  file: null,
-  imageSrc: '',
-  image: null
-};
-
-const assetImageCache = {};
-
-function isObjectUrl(src) {
-  return typeof src === 'string' && src.startsWith('blob:');
-}
-
-function revokeObjectUrl(src) {
-  if (isObjectUrl(src)) {
-    URL.revokeObjectURL(src);
-  }
-}
-
 function revokeRuntimeObjectUrls() {
   revokeObjectUrl(assetUploadDraft.imageSrc);
   revokeObjectUrl(uiState.pendingBackgroundUrl);
   revokeObjectUrl(state.background.imageSrc);
   getAllAssets().forEach((asset) => revokeObjectUrl(asset.imageSrc));
 }
-
-function arrayBufferToDataUrl(buffer, mimeType = 'application/octet-stream') {
-  const bytes = new Uint8Array(buffer);
-  const chunkSize = 32768;
-  let binary = '';
-
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
-  }
-
-  return `data:${mimeType};base64,${btoa(binary)}`;
-}
-
-async function fileToDataUrl(file) {
-  const buffer = await file.arrayBuffer();
-  return arrayBufferToDataUrl(buffer, file.type || 'application/octet-stream');
-}
-
-const dom = {
-  appRoot: document.getElementById('appRoot'),
-  mobileModeToggle: document.getElementById('mobileModeToggle'),
-
-  backgroundUpload: document.getElementById('backgroundUpload'),
-  worldWidthInput: document.getElementById('worldWidthInput'),
-  worldHeightInput: document.getElementById('worldHeightInput'),
-
-  propImageUpload: document.getElementById('propImageUpload'),
-  propNameInput: document.getElementById('propNameInput'),
-  frameWidthInput: document.getElementById('frameWidthInput'),
-  frameHeightInput: document.getElementById('frameHeightInput'),
-  frameCountInput: document.getElementById('frameCountInput'),
-  savePropAssetButton: document.getElementById('savePropAssetButton'),
-  uploadStatusText: document.getElementById('uploadStatusText'),
-  assetPreviewCanvas: document.getElementById('assetPreviewCanvas'),
-  assetList: document.getElementById('assetList'),
-
-  selectedPropStatus: document.getElementById('selectedPropStatus'),
-  selectedPropNameInput: document.getElementById('selectedPropNameInput'),
-  moveAmountSelect: document.getElementById('moveAmountSelect'),
-  moveUpButton: document.getElementById('moveUpButton'),
-  moveLeftButton: document.getElementById('moveLeftButton'),
-  moveRightButton: document.getElementById('moveRightButton'),
-  moveDownButton: document.getElementById('moveDownButton'),
-  makeBiggerButton: document.getElementById('makeBiggerButton'),
-  makeSmallerButton: document.getElementById('makeSmallerButton'),
-  flipPropButton: document.getElementById('flipPropButton'),
-  copyPropButton: document.getElementById('copyPropButton'),
-  deletePropButton: document.getElementById('deletePropButton'),
-
-  propBehaviourSelect: document.getElementById('propBehaviourSelect'),
-  loopSettings: document.getElementById('loopSettings'),
-  loopSpeedSelect: document.getElementById('loopSpeedSelect'),
-  beatSettings: document.getElementById('beatSettings'),
-  beatDivSelect: document.getElementById('beatDivSelect'),
-  flickerSettings: document.getElementById('flickerSettings'),
-  flickerMinInput: document.getElementById('flickerMinInput'),
-  flickerMaxInput: document.getElementById('flickerMaxInput'),
-
-  placedPropList: document.getElementById('placedPropList'),
-
-  snapToggle: document.getElementById('snapToggle'),
-  gridSizeSelect: document.getElementById('gridSizeSelect'),
-
-  playPreviewButton: document.getElementById('playPreviewButton'),
-  pausePreviewButton: document.getElementById('pausePreviewButton'),
-  resetPreviewButton: document.getElementById('resetPreviewButton'),
-  previewBpmInput: document.getElementById('previewBpmInput'),
-  previewStatusText: document.getElementById('previewStatusText'),
-
-  downloadExportButton: document.getElementById('downloadExportButton'),
-  copyExportButton: document.getElementById('copyExportButton'),
-  exportStatusText: document.getElementById('exportStatusText'),
-  exportPreviewText: document.getElementById('exportPreviewText'),
-
-  canvasSizeReadout: document.getElementById('canvasSizeReadout'),
-  worldSizeReadout: document.getElementById('worldSizeReadout'),
-  cursorWorldReadout: document.getElementById('cursorWorldReadout'),
-  lastClickReadout: document.getElementById('lastClickReadout'),
-
-  editorCanvas: document.getElementById('editorCanvas')
-};
-
-const ctx = dom.editorCanvas.getContext('2d');
-const assetPreviewCtx = dom.assetPreviewCanvas.getContext('2d');
 
 // ------------------------------------------------------------
 // Local storage
@@ -327,8 +78,8 @@ function saveToLocalStorage() {
       bpm: previewState.bpm
     },
     counters: {
-      assetCounter,
-      propCounter
+      assetCounter: counters.asset,
+      propCounter: counters.prop
     }
   };
 
@@ -384,11 +135,11 @@ function loadFromLocalStorage() {
       previewState.bpm = clamp(Number(data.preview.bpm) || DEFAULTS.preview.bpm, 30, 300);
     }
 
-    assetCounter = Math.max(
+    counters.asset = Math.max(
       Number(data.counters?.assetCounter) || 1,
       getNextNumberedId(Object.keys(state.assets.byId), 'asset')
     );
-    propCounter = Math.max(
+    counters.prop = Math.max(
       Number(data.counters?.propCounter) || 1,
       getNextNumberedId(Object.keys(state.props.byId), 'prop')
     );
@@ -408,6 +159,61 @@ function loadFromLocalStorage() {
     console.error('Failed to load saved state', error);
     return false;
   }
+}
+
+// ------------------------------------------------------------
+// Edit history
+// ------------------------------------------------------------
+function clonePropsState() {
+  return JSON.parse(JSON.stringify(state.props));
+}
+
+function propsSnapshotsMatch(first, second) {
+  return JSON.stringify(first) === JSON.stringify(second);
+}
+
+function pushHistorySnapshot(stack, snapshot) {
+  stack.push(snapshot);
+
+  if (stack.length > HISTORY_LIMIT) {
+    stack.shift();
+  }
+}
+
+function rememberPropsBeforeChange(beforeSnapshot) {
+  const afterSnapshot = clonePropsState();
+  if (propsSnapshotsMatch(beforeSnapshot, afterSnapshot)) return;
+
+  pushHistorySnapshot(editHistory.undo, beforeSnapshot);
+  editHistory.redo = [];
+}
+
+function restorePropsSnapshot(snapshot) {
+  state.props = JSON.parse(JSON.stringify(snapshot));
+
+  if (state.selection.propId && !getProp(state.selection.propId)) {
+    state.selection.propId = null;
+  }
+
+  ensurePreviewStatesMatchProps();
+  saveToLocalStorage();
+  refreshAllUi();
+}
+
+function undoEdit() {
+  const snapshot = editHistory.undo.pop();
+  if (!snapshot) return;
+
+  pushHistorySnapshot(editHistory.redo, clonePropsState());
+  restorePropsSnapshot(snapshot);
+}
+
+function redoEdit() {
+  const snapshot = editHistory.redo.pop();
+  if (!snapshot) return;
+
+  pushHistorySnapshot(editHistory.undo, clonePropsState());
+  restorePropsSnapshot(snapshot);
 }
 
 // ------------------------------------------------------------
@@ -452,6 +258,9 @@ function removeAsset(assetId) {
 
   usedBy.forEach((prop) => removeProp(prop.id));
   delete state.assets.byId[assetId];
+  if (assetImageCache[assetId]) {
+    assetImageCache[assetId].src = '';
+  }
   delete assetImageCache[assetId];
   revokeObjectUrl(asset.imageSrc);
 
@@ -774,6 +583,13 @@ function fitCanvasToBackground() {
   }
 }
 
+function resetEditorView() {
+  uiState.view.zoom = 1;
+  uiState.view.panX = 0;
+  uiState.view.panY = 0;
+  renderEditor();
+}
+
 function getCanvasPointerPosition(event) {
   const rect = dom.editorCanvas.getBoundingClientRect();
   const scaleX = dom.editorCanvas.width / rect.width;
@@ -786,24 +602,30 @@ function getCanvasPointerPosition(event) {
 }
 
 function canvasToWorld(canvasX, canvasY) {
+  const stageX = (canvasX - uiState.view.panX) / uiState.view.zoom;
+  const stageY = (canvasY - uiState.view.panY) / uiState.view.zoom;
+
   return {
-    worldX: Math.round((canvasX / dom.editorCanvas.width) * state.world.width),
-    worldY: Math.round((canvasY / dom.editorCanvas.height) * state.world.height)
+    worldX: Math.round((stageX / dom.editorCanvas.width) * state.world.width),
+    worldY: Math.round((stageY / dom.editorCanvas.height) * state.world.height)
   };
 }
 
 function worldToCanvas(worldX, worldY) {
+  const stageX = (worldX / state.world.width) * dom.editorCanvas.width;
+  const stageY = (worldY / state.world.height) * dom.editorCanvas.height;
+
   return {
-    canvasX: (worldX / state.world.width) * dom.editorCanvas.width,
-    canvasY: (worldY / state.world.height) * dom.editorCanvas.height
+    canvasX: stageX * uiState.view.zoom + uiState.view.panX,
+    canvasY: stageY * uiState.view.zoom + uiState.view.panY
   };
 }
 
 function getAssetDrawMetrics(asset, prop) {
   if (!asset) return null;
 
-  const scaleToCanvasX = dom.editorCanvas.width / state.world.width;
-  const scaleToCanvasY = dom.editorCanvas.height / state.world.height;
+  const scaleToCanvasX = (dom.editorCanvas.width / state.world.width) * uiState.view.zoom;
+  const scaleToCanvasY = (dom.editorCanvas.height / state.world.height) * uiState.view.zoom;
 
   const drawWidth = asset.frameWidth * prop.scale * scaleToCanvasX;
   const drawHeight = asset.frameHeight * prop.scale * scaleToCanvasY;
@@ -839,28 +661,36 @@ function drawCheckerBackground() {
 
 function drawBackgroundImage() {
   if (!uiState.backgroundImage) return;
-  ctx.drawImage(uiState.backgroundImage, 0, 0, dom.editorCanvas.width, dom.editorCanvas.height);
+  ctx.drawImage(
+    uiState.backgroundImage,
+    uiState.view.panX,
+    uiState.view.panY,
+    dom.editorCanvas.width * uiState.view.zoom,
+    dom.editorCanvas.height * uiState.view.zoom
+  );
 }
 
 function drawGridOverlay() {
   if (!state.grid.enabled) return;
 
   const gridSize = Math.max(1, state.grid.size);
-  const stepX = (gridSize / state.world.width) * dom.editorCanvas.width;
-  const stepY = (gridSize / state.world.height) * dom.editorCanvas.height;
+  const stepX = (gridSize / state.world.width) * dom.editorCanvas.width * uiState.view.zoom;
+  const stepY = (gridSize / state.world.height) * dom.editorCanvas.height * uiState.view.zoom;
+  const startX = uiState.view.panX + Math.ceil((0 - uiState.view.panX) / stepX) * stepX;
+  const startY = uiState.view.panY + Math.ceil((0 - uiState.view.panY) / stepY) * stepY;
 
   ctx.save();
   ctx.strokeStyle = 'rgba(121, 199, 255, 0.12)';
   ctx.lineWidth = 1;
 
-  for (let x = 0; x <= dom.editorCanvas.width; x += stepX) {
+  for (let x = startX; x <= dom.editorCanvas.width; x += stepX) {
     ctx.beginPath();
     ctx.moveTo(x, 0);
     ctx.lineTo(x, dom.editorCanvas.height);
     ctx.stroke();
   }
 
-  for (let y = 0; y <= dom.editorCanvas.height; y += stepY) {
+  for (let y = startY; y <= dom.editorCanvas.height; y += stepY) {
     ctx.beginPath();
     ctx.moveTo(0, y);
     ctx.lineTo(dom.editorCanvas.width, y);
@@ -1462,6 +1292,7 @@ function setSelectedPropBehaviour(mode) {
   const prop = getSelectedPlacedProp();
   if (!prop) return;
 
+  const beforeSnapshot = clonePropsState();
   const patch = { mode };
 
   if (mode === 'loop' && !prop.fps) patch.fps = 6;
@@ -1472,20 +1303,25 @@ function setSelectedPropBehaviour(mode) {
   }
 
   updateProp(prop.id, patch);
+  rememberPropsBeforeChange(beforeSnapshot);
   refreshAllUi();
 }
 
 function setSelectedPropLoopSpeed(fps) {
   const prop = getSelectedPlacedProp();
   if (!prop) return;
+  const beforeSnapshot = clonePropsState();
   updateProp(prop.id, { fps: Math.max(1, Number(fps) || 6) });
+  rememberPropsBeforeChange(beforeSnapshot);
   refreshAllUi();
 }
 
 function setSelectedPropBeatDiv(value) {
   const prop = getSelectedPlacedProp();
   if (!prop) return;
+  const beforeSnapshot = clonePropsState();
   updateProp(prop.id, { beatDiv: Math.max(1, Number(value) || 1) });
+  rememberPropsBeforeChange(beforeSnapshot);
   refreshAllUi();
 }
 
@@ -1493,6 +1329,7 @@ function setSelectedPropFlickerRange(minDelay, maxDelay) {
   const prop = getSelectedPlacedProp();
   if (!prop) return;
 
+  const beforeSnapshot = clonePropsState();
   let safeMin = Math.max(10, Number(minDelay) || 120);
   let safeMax = Math.max(10, Number(maxDelay) || 300);
 
@@ -1507,6 +1344,7 @@ function setSelectedPropFlickerRange(minDelay, maxDelay) {
     maxDelay: safeMax
   });
 
+  rememberPropsBeforeChange(beforeSnapshot);
   refreshAllUi();
 }
 
@@ -1525,6 +1363,7 @@ function placeSelectedAssetAtWorld(worldX, worldY) {
   if (!asset) return null;
 
   const snapped = snapPoint(worldX, worldY);
+  const beforeSnapshot = clonePropsState();
 
   const placed = addProp({
     assetId: asset.id,
@@ -1540,6 +1379,7 @@ function placeSelectedAssetAtWorld(worldX, worldY) {
   });
 
   selectProp(placed.id);
+  rememberPropsBeforeChange(beforeSnapshot);
   return placed;
 }
 
@@ -1547,6 +1387,7 @@ function moveSelectedProp(dx, dy) {
   const prop = getSelectedPlacedProp();
   if (!prop) return;
 
+  const beforeSnapshot = clonePropsState();
   let nextX = prop.x + dx;
   let nextY = prop.y + dy;
 
@@ -1560,6 +1401,7 @@ function moveSelectedProp(dx, dy) {
   nextY = clamp(nextY, 0, state.world.height);
 
   updateProp(prop.id, { x: nextX, y: nextY });
+  rememberPropsBeforeChange(beforeSnapshot);
   refreshAllUi();
 }
 
@@ -1567,24 +1409,30 @@ function resizeSelectedProp(scaleDelta) {
   const prop = getSelectedPlacedProp();
   if (!prop) return;
 
+  const beforeSnapshot = clonePropsState();
   const nextScale = clamp(Number((prop.scale + scaleDelta).toFixed(2)), 0.25, 4);
   updateProp(prop.id, { scale: nextScale });
+  rememberPropsBeforeChange(beforeSnapshot);
   refreshAllUi();
 }
 
 function flipSelectedProp() {
   const prop = getSelectedPlacedProp();
   if (!prop) return;
+  const beforeSnapshot = clonePropsState();
   updateProp(prop.id, { flipX: !prop.flipX });
+  rememberPropsBeforeChange(beforeSnapshot);
   refreshAllUi();
 }
 
 function copySelectedPropAction() {
   const prop = getSelectedPlacedProp();
   if (!prop) return;
+  const beforeSnapshot = clonePropsState();
   const copy = duplicateProp(prop.id);
   if (!copy) return;
   selectProp(copy.id);
+  rememberPropsBeforeChange(beforeSnapshot);
   refreshAllUi();
   scrollSelectedPropCardIntoView();
 }
@@ -1592,14 +1440,18 @@ function copySelectedPropAction() {
 function deleteSelectedPropAction() {
   const prop = getSelectedPlacedProp();
   if (!prop) return;
+  const beforeSnapshot = clonePropsState();
   removeProp(prop.id);
+  rememberPropsBeforeChange(beforeSnapshot);
   refreshAllUi();
 }
 
 function renameSelectedProp(value) {
   const prop = getSelectedPlacedProp();
   if (!prop) return;
+  const beforeSnapshot = clonePropsState();
   updateProp(prop.id, { label: value });
+  rememberPropsBeforeChange(beforeSnapshot);
   refreshAllUi();
 }
 
@@ -1630,53 +1482,19 @@ function findTopmostPropAtCanvasPoint(canvasX, canvasY) {
 // ------------------------------------------------------------
 // Export helpers
 // ------------------------------------------------------------
-function exportPropData() {
-  return getAllProps().map((prop) => ({
-    id: prop.id,
-    assetId: prop.assetId,
-    label: prop.label || '',
-    x: prop.x,
-    y: prop.y,
-    scale: prop.scale,
-    depth: prop.depth,
-    originX: prop.originX,
-    originY: prop.originY,
-    flipX: prop.flipX,
-    mode: prop.mode,
-    ...(prop.mode === 'beat' ? { beatDiv: prop.beatDiv } : {}),
-    ...(prop.mode === 'loop' ? { fps: prop.fps } : {}),
-    ...(prop.mode === 'randomFlicker'
-      ? { minDelay: prop.minDelay, maxDelay: prop.maxDelay }
-      : {})
-  }));
-}
-
-function exportAssetManifest() {
-  const manifest = {};
-  getAllAssets().forEach((asset) => {
-    manifest[asset.id] = {
-      frameWidth: asset.frameWidth,
-      frameHeight: asset.frameHeight,
-      frameCount: asset.frameCount
-    };
-  });
-  return manifest;
-}
-
 function exportAsJson() {
-  return JSON.stringify(
-    {
-      world: { ...state.world },
-      assets: exportAssetManifest(),
-      props: exportPropData()
-    },
-    null,
-    2
-  );
+  return buildExportJson({
+    world: state.world,
+    assets: getAllAssets(),
+    props: getAllProps()
+  });
 }
 
 function exportAsJsModule() {
-  return `export const propAssets = ${JSON.stringify(exportAssetManifest(), null, 2)};\n\nexport const stageProps = ${JSON.stringify(exportPropData(), null, 2)};\n`;
+  return buildExportJsModule({
+    assets: getAllAssets(),
+    props: getAllProps()
+  });
 }
 
 function refreshExportPanel() {
@@ -1792,16 +1610,124 @@ function loadBackgroundFromFile(file) {
   image.src = objectUrl;
 }
 
+function getDroppedImageFile(event) {
+  const files = Array.from(event.dataTransfer?.files || []);
+  return files.find((file) => file.type.startsWith('image/')) || null;
+}
+
+function hasDraggedFile(event) {
+  return Array.from(event.dataTransfer?.types || []).includes('Files');
+}
+
+function bindImageDropTarget(dropTarget, onImageFile) {
+  if (!dropTarget) return;
+
+  dropTarget.addEventListener('dragover', (event) => {
+    if (!hasDraggedFile(event)) return;
+    event.preventDefault();
+    dropTarget.classList.add('drag-over');
+  });
+
+  dropTarget.addEventListener('dragleave', (event) => {
+    if (dropTarget.contains(event.relatedTarget)) return;
+    dropTarget.classList.remove('drag-over');
+  });
+
+  dropTarget.addEventListener('drop', (event) => {
+    const file = getDroppedImageFile(event);
+    if (!file) return;
+
+    event.preventDefault();
+    dropTarget.classList.remove('drag-over');
+    onImageFile(file);
+  });
+}
+
+function updateEditorCursor() {
+  dom.editorCanvas.classList.toggle('can-pan', uiState.view.spacePanning);
+  dom.editorCanvas.classList.toggle('is-panning', uiState.view.isPanning);
+}
+
 // ------------------------------------------------------------
 // Canvas interactions
 // ------------------------------------------------------------
+function handleEditorCanvasWheel(event) {
+  event.preventDefault();
+
+  const { canvasX, canvasY } = getCanvasPointerPosition(event);
+  const oldZoom = uiState.view.zoom;
+  const zoomFactor = event.deltaY < 0 ? 1.1 : 0.9;
+  const newZoom = clamp(oldZoom * zoomFactor, 0.25, 4);
+
+  if (newZoom === oldZoom) return;
+
+  const stageX = (canvasX - uiState.view.panX) / oldZoom;
+  const stageY = (canvasY - uiState.view.panY) / oldZoom;
+
+  uiState.view.zoom = newZoom;
+  uiState.view.panX = canvasX - stageX * newZoom;
+  uiState.view.panY = canvasY - stageY * newZoom;
+  renderEditor();
+}
+
+function startEditorPan(event) {
+  const middleMouse = event.button === 1;
+  const spaceDrag = event.button === 0 && uiState.view.spacePanning;
+
+  if (!middleMouse && !spaceDrag) return;
+
+  event.preventDefault();
+
+  const { canvasX, canvasY } = getCanvasPointerPosition(event);
+  uiState.view.isPanning = true;
+  uiState.view.didPan = true;
+  uiState.view.panStartX = canvasX;
+  uiState.view.panStartY = canvasY;
+  uiState.view.panStartViewX = uiState.view.panX;
+  uiState.view.panStartViewY = uiState.view.panY;
+  updateEditorCursor();
+}
+
+function updateEditorPan(event) {
+  if (!uiState.view.isPanning) return false;
+
+  const { canvasX, canvasY } = getCanvasPointerPosition(event);
+  const deltaX = canvasX - uiState.view.panStartX;
+  const deltaY = canvasY - uiState.view.panStartY;
+
+  uiState.view.panX = uiState.view.panStartViewX + deltaX;
+  uiState.view.panY = uiState.view.panStartViewY + deltaY;
+
+  if (Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2) {
+    uiState.view.didPan = true;
+  }
+
+  renderEditor();
+  return true;
+}
+
+function stopEditorPan() {
+  if (!uiState.view.isPanning) return;
+  uiState.view.isPanning = false;
+  updateEditorCursor();
+}
+
 function handleEditorCanvasMove(event) {
+  if (updateEditorPan(event)) {
+    event.stopPropagation();
+    return;
+  }
+
   const { canvasX, canvasY } = getCanvasPointerPosition(event);
   const { worldX, worldY } = canvasToWorld(canvasX, canvasY);
 
   uiState.cursorWorldX = worldX;
   uiState.cursorWorldY = worldY;
   renderEditor();
+}
+
+function handleEditorWindowMove(event) {
+  updateEditorPan(event);
 }
 
 function handleEditorCanvasLeave() {
@@ -1811,6 +1737,11 @@ function handleEditorCanvasLeave() {
 }
 
 function handleEditorCanvasClick(event) {
+  if (uiState.view.didPan) {
+    uiState.view.didPan = false;
+    return;
+  }
+
   const { canvasX, canvasY } = getCanvasPointerPosition(event);
   let { worldX, worldY } = canvasToWorld(canvasX, canvasY);
 
@@ -1849,12 +1780,32 @@ function handleEditorCanvasClick(event) {
 // Keyboard shortcuts
 // ------------------------------------------------------------
 function handleKeyboardShortcuts(event) {
+  if (event.ctrlKey && event.key.toLowerCase() === 'z') {
+    event.preventDefault();
+    if (event.shiftKey) {
+      redoEdit();
+    } else {
+      undoEdit();
+    }
+    return;
+  }
+
+  if (event.ctrlKey && event.key.toLowerCase() === 'y') {
+    event.preventDefault();
+    redoEdit();
+    return;
+  }
+
   if (isTypingTarget(document.activeElement)) return;
 
   const key = event.key;
   const move = event.shiftKey ? 16 : getMoveAmount();
 
-  if (key === 'ArrowUp') {
+  if (key === ' ') {
+    event.preventDefault();
+    uiState.view.spacePanning = true;
+    updateEditorCursor();
+  } else if (key === 'ArrowUp') {
     event.preventDefault();
     moveSelectedProp(0, -move);
   } else if (key === 'ArrowDown') {
@@ -1884,6 +1835,12 @@ function handleKeyboardShortcuts(event) {
   }
 }
 
+function handleKeyboardShortcutRelease(event) {
+  if (event.key !== ' ') return;
+  uiState.view.spacePanning = false;
+  updateEditorCursor();
+}
+
 // ------------------------------------------------------------
 // Event binding
 // ------------------------------------------------------------
@@ -1906,6 +1863,7 @@ function bindUi() {
   dom.backgroundUpload.addEventListener('change', (event) => {
     loadBackgroundFromFile(event.target.files?.[0]);
   });
+  bindImageDropTarget(dom.backgroundDropArea, loadBackgroundFromFile);
 
   dom.worldWidthInput.addEventListener('input', () => {
     setWorldSize(dom.worldWidthInput.value, dom.worldHeightInput.value);
@@ -1920,6 +1878,7 @@ function bindUi() {
   dom.propImageUpload.addEventListener('change', (event) => {
     loadDraftImageFromFile(event.target.files?.[0]);
   });
+  bindImageDropTarget(dom.propImageDropArea, loadDraftImageFromFile);
 
   dom.frameWidthInput.addEventListener('input', renderAssetPreview);
   dom.frameHeightInput.addEventListener('input', renderAssetPreview);
@@ -1983,12 +1942,21 @@ function bindUi() {
   dom.downloadExportButton.addEventListener('click', downloadExportForGame);
   dom.copyExportButton.addEventListener('click', copyExportForGame);
 
+  dom.resetViewButton.addEventListener('click', resetEditorView);
+  dom.editorCanvas.addEventListener('wheel', handleEditorCanvasWheel, { passive: false });
+  dom.editorCanvas.addEventListener('mousedown', startEditorPan);
   dom.editorCanvas.addEventListener('mousemove', handleEditorCanvasMove);
   dom.editorCanvas.addEventListener('mouseleave', handleEditorCanvasLeave);
   dom.editorCanvas.addEventListener('click', handleEditorCanvasClick);
+  dom.editorCanvas.addEventListener('auxclick', (event) => {
+    if (event.button === 1) event.preventDefault();
+  });
+  window.addEventListener('mousemove', handleEditorWindowMove);
+  window.addEventListener('mouseup', stopEditorPan);
 
   window.addEventListener('beforeunload', revokeRuntimeObjectUrls);
   document.addEventListener('keydown', handleKeyboardShortcuts);
+  document.addEventListener('keyup', handleKeyboardShortcutRelease);
 }
 
 // ------------------------------------------------------------

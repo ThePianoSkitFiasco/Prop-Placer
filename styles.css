@@ -11,6 +11,7 @@
   --muted: #b8b8b8;
   --accent: #79c7ff;
   --accent-soft: rgba(121, 199, 255, 0.2);
+  --focus-ring: rgba(121, 199, 255, 0.45);
 }
 
 html,
@@ -19,7 +20,7 @@ body {
   padding: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: Arial, sans-serif;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 body {
@@ -50,10 +51,15 @@ body {
 
 .editor {
   display: flex;
-  align-items: flex-start;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
   padding: 16px;
   overflow: auto;
+}
+
+.view-tools {
+  margin-bottom: 8px;
 }
 
 .canvas-wrap {
@@ -70,6 +76,14 @@ canvas {
   max-width: 100%;
   height: auto;
   cursor: crosshair;
+}
+
+canvas.can-pan {
+  cursor: grab;
+}
+
+canvas.is-panning {
+  cursor: grabbing;
 }
 
 h1 {
@@ -94,6 +108,11 @@ h2 {
   border: 1px solid var(--line);
   padding: 12px;
   margin-bottom: 14px;
+}
+
+.drop-target.drag-over {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft) inset;
 }
 
 .panel-header-row {
@@ -143,6 +162,15 @@ button {
 
 button:hover {
   background: #4a4a4a;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px var(--focus-ring);
 }
 
 button:disabled {
