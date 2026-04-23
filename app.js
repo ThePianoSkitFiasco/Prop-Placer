@@ -171,6 +171,7 @@ const state = {
 
 const uiState = {
   backgroundImage: null,
+  pendingBackgroundUrl: '',
   cursorWorldX: null,
   cursorWorldY: null,
   lastClickWorldX: null,
@@ -194,6 +195,40 @@ const assetUploadDraft = {
 };
 
 const assetImageCache = {};
+
+function isObjectUrl(src) {
+  return typeof src === 'string' && src.startsWith('blob:');
+}
+
+function revokeObjectUrl(src) {
+  if (isObjectUrl(src)) {
+    URL.revokeObjectURL(src);
+  }
+}
+
+function revokeRuntimeObjectUrls() {
+  revokeObjectUrl(assetUploadDraft.imageSrc);
+  revokeObjectUrl(uiState.pendingBackgroundUrl);
+  revokeObjectUrl(state.background.imageSrc);
+  getAllAssets().forEach((asset) => revokeObjectUrl(asset.imageSrc));
+}
+
+function arrayBufferToDataUrl(buffer, mimeType = 'application/octet-stream') {
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 32768;
+  let binary = '';
+
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+
+  return `data:${mimeType};base64,${btoa(binary)}`;
+}
+
+async function fileToDataUrl(file) {
+  const buffer = await file.arrayBuffer();
+  return arrayBufferToDataUrl(buffer, file.type || 'application/octet-stream');
+}
 
 const dom = {
   appRoot: document.getElementById('appRoot'),
@@ -418,6 +453,7 @@ function removeAsset(assetId) {
   usedBy.forEach((prop) => removeProp(prop.id));
   delete state.assets.byId[assetId];
   delete assetImageCache[assetId];
+  revokeObjectUrl(asset.imageSrc);
 
   if (state.selection.assetId === assetId) {
     state.selection.assetId = null;
@@ -1043,7 +1079,11 @@ function renderAssetPreview() {
   }
 }
 
-function resetAssetDraft(keepFileInput = false) {
+function resetAssetDraft(keepFileInput = false, revokeDraftUrl = true) {
+  if (revokeDraftUrl) {
+    revokeObjectUrl(assetUploadDraft.imageSrc);
+  }
+
   assetUploadDraft.file = null;
   assetUploadDraft.imageSrc = '';
   assetUploadDraft.image = null;
@@ -1063,30 +1103,46 @@ function resetAssetDraft(keepFileInput = false) {
 function loadDraftImageFromFile(file) {
   if (!file) return;
 
-  const reader = new FileReader();
+  revokeObjectUrl(assetUploadDraft.imageSrc);
 
-  reader.onload = () => {
-    const image = new Image();
-    image.onload = () => {
-      assetUploadDraft.file = file;
-      assetUploadDraft.imageSrc = reader.result;
-      assetUploadDraft.image = image;
+  const objectUrl = URL.createObjectURL(file);
+  const image = new Image();
 
-      const suggestedName = file.name.replace(/\.[^/.]+$/, '');
-      if (!dom.propNameInput.value.trim()) {
-        dom.propNameInput.value = suggestedName;
-      }
+  assetUploadDraft.file = null;
+  assetUploadDraft.imageSrc = objectUrl;
+  assetUploadDraft.image = null;
 
-      dom.uploadStatusText.textContent = `Loaded: ${file.name} (${image.naturalWidth} x ${image.naturalHeight})`;
-      renderAssetPreview();
-    };
-    image.src = reader.result;
+  image.onload = () => {
+    if (assetUploadDraft.imageSrc !== objectUrl) return;
+
+    assetUploadDraft.file = file;
+    assetUploadDraft.imageSrc = objectUrl;
+    assetUploadDraft.image = image;
+
+    const suggestedName = file.name.replace(/\.[^/.]+$/, '');
+    if (!dom.propNameInput.value.trim()) {
+      dom.propNameInput.value = suggestedName;
+    }
+
+    dom.uploadStatusText.textContent = `Loaded: ${file.name} (${image.naturalWidth} x ${image.naturalHeight})`;
+    renderAssetPreview();
   };
 
-  reader.readAsDataURL(file);
+  image.onerror = () => {
+    revokeObjectUrl(objectUrl);
+    if (assetUploadDraft.imageSrc === objectUrl) {
+      assetUploadDraft.file = null;
+      assetUploadDraft.imageSrc = '';
+      assetUploadDraft.image = null;
+      dom.uploadStatusText.textContent = 'Could not load that picture.';
+      renderAssetPreview();
+    }
+  };
+
+  image.src = objectUrl;
 }
 
-function saveDraftAsAsset() {
+async function saveDraftAsAsset() {
   if (!assetUploadDraft.image || !assetUploadDraft.imageSrc) {
     dom.uploadStatusText.textContent = 'Upload a picture first.';
     return;
@@ -1112,10 +1168,27 @@ function saveDraftAsAsset() {
     suffix += 1;
   }
 
+  const draftImageSrc = assetUploadDraft.imageSrc;
+  let savedImageSrc = draftImageSrc;
+
+  if (assetUploadDraft.file && isObjectUrl(draftImageSrc)) {
+    try {
+      savedImageSrc = await fileToDataUrl(assetUploadDraft.file);
+    } catch (error) {
+      dom.uploadStatusText.textContent = 'Could not save that picture.';
+      return;
+    }
+
+    if (assetUploadDraft.imageSrc !== draftImageSrc) {
+      revokeObjectUrl(draftImageSrc);
+      return;
+    }
+  }
+
   const asset = addAsset({
     id: finalId,
     name,
-    imageSrc: assetUploadDraft.imageSrc,
+    imageSrc: savedImageSrc,
     fileName: assetUploadDraft.file?.name || '',
     frameWidth,
     frameHeight,
@@ -1663,27 +1736,60 @@ function refreshAllUi() {
 function loadBackgroundFromFile(file) {
   if (!file) return;
 
-  const reader = new FileReader();
+  revokeObjectUrl(uiState.pendingBackgroundUrl);
 
-  reader.onload = () => {
-    const image = new Image();
-    image.onload = () => {
-      uiState.backgroundImage = image;
+  const previousBackgroundSrc = state.background.imageSrc;
+  const objectUrl = URL.createObjectURL(file);
+  const image = new Image();
 
-      setBackground({
-        imageSrc: reader.result,
-        fileName: file.name,
-        naturalWidth: image.naturalWidth,
-        naturalHeight: image.naturalHeight
-      });
+  uiState.pendingBackgroundUrl = objectUrl;
 
-      fitCanvasToBackground();
-      renderEditor();
-    };
-    image.src = reader.result;
+  image.onload = async () => {
+    if (uiState.pendingBackgroundUrl !== objectUrl) return;
+
+    let savedImageSrc = objectUrl;
+
+    try {
+      savedImageSrc = await fileToDataUrl(file);
+    } catch (error) {
+      revokeObjectUrl(objectUrl);
+      if (uiState.pendingBackgroundUrl === objectUrl) {
+        uiState.pendingBackgroundUrl = '';
+      }
+      return;
+    }
+
+    if (uiState.pendingBackgroundUrl !== objectUrl) {
+      revokeObjectUrl(objectUrl);
+      return;
+    }
+
+    uiState.pendingBackgroundUrl = '';
+    uiState.backgroundImage = image;
+    setBackground({
+      imageSrc: savedImageSrc,
+      fileName: file.name,
+      naturalWidth: image.naturalWidth,
+      naturalHeight: image.naturalHeight
+    });
+
+    if (previousBackgroundSrc !== objectUrl) {
+      revokeObjectUrl(previousBackgroundSrc);
+    }
+    revokeObjectUrl(objectUrl);
+
+    fitCanvasToBackground();
+    renderEditor();
   };
 
-  reader.readAsDataURL(file);
+  image.onerror = () => {
+    revokeObjectUrl(objectUrl);
+    if (uiState.pendingBackgroundUrl === objectUrl) {
+      uiState.pendingBackgroundUrl = '';
+    }
+  };
+
+  image.src = objectUrl;
 }
 
 // ------------------------------------------------------------
@@ -1881,6 +1987,7 @@ function bindUi() {
   dom.editorCanvas.addEventListener('mouseleave', handleEditorCanvasLeave);
   dom.editorCanvas.addEventListener('click', handleEditorCanvasClick);
 
+  window.addEventListener('beforeunload', revokeRuntimeObjectUrls);
   document.addEventListener('keydown', handleKeyboardShortcuts);
 }
 
